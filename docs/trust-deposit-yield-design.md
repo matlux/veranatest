@@ -46,14 +46,32 @@ The following sections specify the Verana additions in detail.
 - `verana_pool` — **new** module account dedicated to temporary custody of incoming yield. Must be registered in the auth module configuration with no special permissions and **not** blocked for receiving funds.
 - All transfers use the chain base denom (`uvna` unless configured differently). Avoid hard-coded literals where possible; pull the base denom from `sdk.GetConfig().GetBondDenom()` or bank keeper params.
 
+## Module account (`x/td`)
+
+Existing TD module account:
+
+| Param | Type | Description |
+| --- | --- | --- |
+| `trust_deposit_total_value` | `sdk.Int` / `uint64` | Total TD base value used to bound annual yield; mirrors the TD ledger TVL. |
+
+
 ## Parameters (`x/td`)
+
+Existing TD module parameters:
+
+| Param | Type | Description |
+| --- | --- | --- |
+| `trust_deposit_share_value` | `math.LegacyDec` | Value of one share of trust deposit, in denom. Default an initial value: 1. Increase over time, when yield is produced. (mandatory) |
+| `trust_deposit_reclaim_burn_rate` | `math.LegacyDec` | Percentage of the deposit burnt when an account executes a reclaim of capital amount. (mandatory) |
+| `trust_deposit_rate` | `math.LegacyDec` | Rate used to dynamically calculate trust deposits from trust fees. Default: 0.20 (20%). (mandatory) |
+| `wallet_user_agent_reward_rate` | `math.LegacyDec` | Rate used to dynamically calculate wallet user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
+| `user_agent_reward_rate` | `math.LegacyDec` | Rate used to dynamically calculate user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
+
 
 Extend the TD module parameters to include:
 
 | Param | Type | Description |
 | --- | --- | --- |
-| `trust_deposit_share_value` | `math.LegacyDec` | Existing invariant share value (should remain 1.0 unless TD economics change). |
-| `trust_deposit_total_value` | `sdk.Int` / `uint64` | Total TD base value used to bound annual yield; mirrors the TD ledger TVL. |
 | `trust_deposit_max_yield_rate` | `math.LegacyDec` | Maximum annualized yield rate (e.g. 0.15 for 15%). |
 | `blocks_per_year` | `uint32` or `sdk.Int` | Chain-specific estimate used when converting annual rate into per-block allowances. |
 | `verana_pool_address` | `string` | Bech32 string for the Verana Pool module account (default: module addr derived from name). |
@@ -192,7 +210,3 @@ By crediting the TD ledger, individual holders accrue yield proportionally witho
 - Provide CLI/REST handlers mirroring existing module patterns (`query params`, `tx fund-module`, etc.).
 - Document operator playbooks alongside this spec in chain operations docs.
 
----
-
-Ownership: Verana Core Engineering  
-Status: Draft for review (2024-XX-XX)
