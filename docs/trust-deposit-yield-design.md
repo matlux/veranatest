@@ -217,7 +217,6 @@ title Trust Deposit Yield Flow (Conceptual)
 skinparam backgroundColor #ffffff
 skinparam activity {
   BackgroundColor<<calc>> #FFEFD5
-  BackgroundColor<<module>> #F3F7FF
   BorderColor #999999
   ArrowColor #B44
 }
@@ -226,96 +225,68 @@ skinparam note {
   BorderColor #999999
 }
 
-' -------------------- Parameters --------------------
-rectangle "Parameters" as PARAMS #EAF7EA {
-  note as N1
-  trust_deposit_share_value: **1.0**\n
-  blocks_per_year: **6,311,620**\n
-  max_td_yield_rate: **15%**\n
-  trust_deposit_value: **0** (initial)
-  end note
-}
+start
 
-' -------------------- Example Scenario --------------------
-rectangle "Example Scenario" as EX #EAF7EA
-note right of EX
-  • Current State:
-    – 100,000 uvna Trust Deposit
-    – 1 uvna per share
-    – Excess funds collected
-  • Problem Solved:
-    – No missed rewards
-    – Controlled distribution
-    – Dust handling
+floating note left
+Parameters:
+- trust_deposit_share_value: 1.0
+- blocks_per_year: 6311620
+- max_td_yield_rate: 15%
+- trust_deposit_value: 0 (initial)
 end note
 
-' -------------------- Rewards / Community Pool Flow --------------------
-partition "Network Rewards Flow" {
-  start
-  :Block rewards;
-  :Community tax = **2%**;
+floating note right
+Example:
+- 100,000 uvna Trust Deposit
+- 1 uvna per share
+- Excess funds collected
+Solved:
+- No missed rewards
+- Controlled distribution
+- Dust handling
+end note
 
+partition "Network Rewards Flow" {
+  :Block rewards;
+  :Community tax = 2%;
   fork
-    :**98%** goes to the validator;
+    :98% goes to validator;
   fork again
-    :**2%** sent to community pool;
+    :2% to community pool;
     :Community Pool / Protocol Pool Module;
-    note right
-      Governance can direct a portion of\n
-      the community pool to the yield\n
-      intermediate pool on a continuous basis.
-      (percentage & cadence via gov proposal)
-    end note
-    --> [Funds stream] (Yield Intermediate Pool Account)
+    :Send to Yield Intermediate Pool Account;
   end fork
 }
 
-' -------------------- Yield Intermediate Pool --------------------
-rectangle "Yield Intermediate Pool Account" as YIPA #F4F9FF
+partition "Yield Intermediate Pool Account" {
+  :Buffer incoming funds;
+}
 
-' -------------------- Trust Deposit Module (Calculations) --------------------
 partition "Trust Deposit Module" {
-  rectangle "Calculations" <<calc>> as CALC {
-    :Amount Calculation;
-    :Compute **max_per_block** =\n
-      (trust_deposit_value × max_td_yield_rate)\n
-      ÷ blocks_per_year;
+  :Amount calculation;
+  :Compute max_per_block = (trust_deposit_value * max_td_yield_rate) / blocks_per_year;
+  :Compute amount_to_send = min(max_per_block, YIPA_balance);
 
-    :Compute **amount_to_send** =\n
-      min(max_per_block, YIPA_balance);
-
-    if (amount_to_send ≥ 1 micro-unit?) then (yes)
-      :Transfer **amount_to_send**\nfrom **Yield Intermediate Pool Account**\n→ **Trust Deposit Module**;
+  if (amount_to_send >= 1 micro unit?) then (yes)
+    :Transfer amount_to_send from YIPA -> TD module;
+  else (no)
+    :Store in dust_amount (below precision);
+    :Accumulate dust;
+    if (dust_amount >= 1 micro unit?) then (yes)
+      :Transfer dust_amount from YIPA -> TD module;
+      :Reset dust_amount to 0;
     else (no)
-      :Store in **dust_amount** (below precision);
-      :Accumulate Dust;
-      if (dust_amount ≥ 1 micro-unit?) then (yes)
-        :Transfer **dust_amount** from YIPA\n→ Trust Deposit Module;
-        :Reset **dust_amount** to 0;
-      else (no)
-        :Wait for next block;
-      endif
+      :Wait for next block;
     endif
-  }
+  endif
 
   :Distribute yields;
   :Trust Deposit Holders;
 }
 
-' -------------------- Operational Notes --------------------
-note left of YIPA
-  • Combined funds are returned after transfer\n
-    if balance would drop below 0 uvna.\n
-  • % routed from Community Pool to YIPA is\n
-    defined by governance proposal.
-end note
-
-' -------------------- Governance Shortcut --------------------
-note right of YIPA
-  **Example Gov Proposal** (continuous funding)\n
-  Proposer: Foundation / Protocol Treasury\n
-  Recipient: Yield Intermediate Pool Account\n
-  Flow: Community Pool → YIPA (recurring)
+note left
+- Governance config sets percentage routed from Community Pool to YIPA.
+- Residuals may be swept back to the community pool after transfers.
 end note
 
 stop
