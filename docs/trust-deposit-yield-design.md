@@ -210,3 +210,114 @@ By crediting the TD ledger, individual holders accrue yield proportionally witho
 - Provide CLI/REST handlers mirroring existing module patterns (`query params`, `tx fund-module`, etc.).
 - Document operator playbooks alongside this spec in chain operations docs.
 
+```plantuml
+@startuml
+title Trust Deposit Yield Flow (Conceptual)
+
+skinparam backgroundColor #ffffff
+skinparam activity {
+  BackgroundColor<<calc>> #FFEFD5
+  BackgroundColor<<module>> #F3F7FF
+  BorderColor #999999
+  ArrowColor #B44
+}
+skinparam note {
+  BackgroundColor #FFFFCC
+  BorderColor #999999
+}
+
+' -------------------- Parameters --------------------
+rectangle "Parameters" as PARAMS #EAF7EA {
+  note as N1
+  trust_deposit_share_value: **1.0**\n
+  blocks_per_year: **6,311,620**\n
+  max_td_yield_rate: **15%**\n
+  trust_deposit_value: **0** (initial)
+  end note
+}
+
+' -------------------- Example Scenario --------------------
+rectangle "Example Scenario" as EX #EAF7EA
+note right of EX
+  • Current State:
+    – 100,000 uvna Trust Deposit
+    – 1 uvna per share
+    – Excess funds collected
+  • Problem Solved:
+    – No missed rewards
+    – Controlled distribution
+    – Dust handling
+end note
+
+' -------------------- Rewards / Community Pool Flow --------------------
+partition "Network Rewards Flow" {
+  start
+  :Block rewards;
+  :Community tax = **2%**;
+
+  fork
+    :**98%** goes to the validator;
+  fork again
+    :**2%** sent to community pool;
+    :Community Pool / Protocol Pool Module;
+    note right
+      Governance can direct a portion of\n
+      the community pool to the yield\n
+      intermediate pool on a continuous basis.
+      (percentage & cadence via gov proposal)
+    end note
+    --> [Funds stream] (Yield Intermediate Pool Account)
+  end fork
+}
+
+' -------------------- Yield Intermediate Pool --------------------
+rectangle "Yield Intermediate Pool Account" as YIPA #F4F9FF
+
+' -------------------- Trust Deposit Module (Calculations) --------------------
+partition "Trust Deposit Module" {
+  rectangle "Calculations" <<calc>> as CALC {
+    :Amount Calculation;
+    :Compute **max_per_block** =\n
+      (trust_deposit_value × max_td_yield_rate)\n
+      ÷ blocks_per_year;
+
+    :Compute **amount_to_send** =\n
+      min(max_per_block, YIPA_balance);
+
+    if (amount_to_send ≥ 1 micro-unit?) then (yes)
+      :Transfer **amount_to_send**\nfrom **Yield Intermediate Pool Account**\n→ **Trust Deposit Module**;
+    else (no)
+      :Store in **dust_amount** (below precision);
+      :Accumulate Dust;
+      if (dust_amount ≥ 1 micro-unit?) then (yes)
+        :Transfer **dust_amount** from YIPA\n→ Trust Deposit Module;
+        :Reset **dust_amount** to 0;
+      else (no)
+        :Wait for next block;
+      endif
+    endif
+  }
+
+  :Distribute yields;
+  :Trust Deposit Holders;
+}
+
+' -------------------- Operational Notes --------------------
+note left of YIPA
+  • Combined funds are returned after transfer\n
+    if balance would drop below 0 uvna.\n
+  • % routed from Community Pool to YIPA is\n
+    defined by governance proposal.
+end note
+
+' -------------------- Governance Shortcut --------------------
+note right of YIPA
+  **Example Gov Proposal** (continuous funding)\n
+  Proposer: Foundation / Protocol Treasury\n
+  Recipient: Yield Intermediate Pool Account\n
+  Flow: Community Pool → YIPA (recurring)
+end note
+
+stop
+@enduml
+```
