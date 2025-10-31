@@ -60,8 +60,8 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 
 	if totalAmount.GTE(microUnitThreshold) {
 		// Get module addresses
-		veranaPool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
-		veranaPoolAddr, _ := sdk.AccAddressFromBech32(veranaPool)
+		yieldIntermediatePool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
+		yieldIntermediatePoolAddr, _ := sdk.AccAddressFromBech32(yieldIntermediatePool)
 
 		// Convert to integer amount for transfer
 		transferAmount := totalAmount.TruncateInt()
@@ -70,14 +70,14 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 		transferCoins := sdk.NewCoins(sdk.NewCoin("uvna", transferAmount))
 
 		// Check if verana pool has sufficient balance
-		veranaPoolBalance := k.bankKeeper.GetAllBalances(ctx, veranaPoolAddr)
-		if !veranaPoolBalance.IsAllGTE(transferCoins) {
+		yieldIntermediatePoolBalance := k.bankKeeper.GetAllBalances(ctx, yieldIntermediatePoolAddr)
+		if !yieldIntermediatePoolBalance.IsAllGTE(transferCoins) {
 			// Not enough funds in verana pool, skip transfer
 			return nil
 		}
 
 		// Transfer from verana pool to trust deposit module
-		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.VeranaPoolAccount, types.ModuleName, transferCoins); err != nil {
+		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.yieldIntermediatePoolAccount, types.ModuleName, transferCoins); err != nil {
 			return err
 		}
 
@@ -110,25 +110,25 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 // SendFundsBackToCommunityPool sends excess funds from verana pool back to community pool
 func (k Keeper) SendFundsBackToCommunityPool(ctx sdk.Context) error {
 	// Get verana pool module address
-	veranaPool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
-	veranaPoolAddr, _ := sdk.AccAddressFromBech32(veranaPool)
+	yieldIntermediatePool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
+	yieldIntermediatePoolAddr, _ := sdk.AccAddressFromBech32(yieldIntermediatePool)
 
 	// Get current balance in verana pool
-	veranaPoolBalance := k.bankKeeper.GetAllBalances(ctx, veranaPoolAddr)
+	yieldIntermediatePoolBalance := k.bankKeeper.GetAllBalances(ctx, yieldIntermediatePoolAddr)
 
 	// If there are no funds, nothing to send back
-	if veranaPoolBalance.IsZero() {
+	if yieldIntermediatePoolBalance.IsZero() {
 		return nil
 	}
 
 	// Send all remaining funds back to protocol pool
-	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.VeranaPoolAccount, protocolpooltypes.ModuleName, veranaPoolBalance); err != nil {
+	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.yieldIntermediatePoolAccount, protocolpooltypes.ModuleName, yieldIntermediatePoolBalance); err != nil {
 		return err
 	}
 
 	// Log the transfer
 	ctx.Logger().Info("Sent excess funds back to community pool",
-		"amount", veranaPoolBalance.String())
+		"amount", yieldIntermediatePoolBalance.String())
 
 	return nil
 }

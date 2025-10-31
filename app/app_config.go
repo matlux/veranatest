@@ -91,7 +91,7 @@ var (
 		{Account: protocolpooltypes.ModuleName},
 		{Account: protocolpooltypes.ProtocolPoolEscrowAccount},
 		{Account: tdmoduletypes.ModuleName},
-		{Account: tdmoduletypes.VeranaPoolAccount},
+		{Account: tdmoduletypes.yieldIntermediatePoolAccount},
 		// this line is used by starport scaffolding # stargate/app/maccPerms
 	}
 

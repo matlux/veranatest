@@ -137,14 +137,14 @@ Executed each block after distribution and protocol pool modules:
    perBlock := annualYield.Quo(decFrom(params.BlocksPerYear))
    totalDec := dust.Add(perBlock)
    ```
-3. **Check Balance**: `available := bankKeeper.GetBalance(ctx, veranaPoolAddr, denom)`.
+3. **Check Balance**: `available := bankKeeper.GetBalance(ctx, yieldIntermediatePoolAddr, denom)`.
 4. **Determine Transfer**:
    - `transferInt := totalDec.TruncateInt()`
    - `transferInt = min(transferInt, available.Amount)`
    - If `transferInt.IsZero()`: store updated dust (`totalDec`) and exit.
 5. **Pull Funds**:
    - `transferCoins := sdk.NewCoins(sdk.NewCoin(denom, transferInt))`
-   - `bankKeeper.SendCoinsFromModuleToModule(ctx, VeranaPoolAccount, types.ModuleName, transferCoins)`
+   - `bankKeeper.SendCoinsFromModuleToModule(ctx, yieldIntermediatePoolAccount, types.ModuleName, transferCoins)`
 6. **Credit TD Ledger**:
    - Ensure the TD module’s existing accounting observes the increased module balance (no new interface required; Verana already exposes share ownership and reacts to balance changes). If the parameters cache `trust_deposit_total_value`, refresh it from the authoritative TD data that already exists.
 7. **Update Dust**:
@@ -204,7 +204,7 @@ By crediting the TD ledger, individual holders accrue yield proportionally witho
 | Gap Observed in POC | Production Resolution |
 | --- | --- |
 | Hard-coded addresses/denom | Parameterize addresses, derive denom via bank/mint params. |
-| No partial payout when funding < allowance | Use `min(allowance, veranaPoolBalance)` to transfer whatever is available. |
+| No partial payout when funding < allowance | Use `min(allowance, yieldIntermediatePoolBalance)` to transfer whatever is available. |
 | Funds stranded in intermediate pool | Post-transfer sweep back to community pool. |
 | Parameter validation empty | Implement strict validators (non-negative, rate bounds, etc.). |
 | Unlimited `MsgFundModule` targets | Enforce allowlist and update `trust_deposit_total_value` only when TD is funded via ledger API. |
