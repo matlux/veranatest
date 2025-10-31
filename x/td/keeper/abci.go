@@ -77,7 +77,7 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 		}
 
 		// Transfer from verana pool to trust deposit module
-		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.yieldIntermediatePoolAccount, types.ModuleName, transferCoins); err != nil {
+		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.YieldIntermediatePoolAccount, types.ModuleName, transferCoins); err != nil {
 			return err
 		}
 
@@ -122,7 +122,7 @@ func (k Keeper) SendFundsBackToCommunityPool(ctx sdk.Context) error {
 	}
 
 	// Send all remaining funds back to protocol pool
-	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.yieldIntermediatePoolAccount, protocolpooltypes.ModuleName, yieldIntermediatePoolBalance); err != nil {
+	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.YieldIntermediatePoolAccount, protocolpooltypes.ModuleName, yieldIntermediatePoolBalance); err != nil {
 		return err
 	}
 
