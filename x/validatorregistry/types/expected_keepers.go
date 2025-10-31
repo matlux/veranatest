@@ -5,7 +5,11 @@ import (
 
 	"cosmossdk.io/core/address"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/group/keeper"
 )
+
+// GroupKeeper is an alias for the group keeper interface
+type GroupKeeper = keeper.Keeper
 
 // AuthKeeper defines the expected interface for the Auth module.
 type AuthKeeper interface {

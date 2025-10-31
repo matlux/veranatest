@@ -1,0 +1,19 @@
+{
+  "group_policy_address": "cosmos1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfwkgpd",
+  "messages": [
+    {
+      "@type": "/veranatest.validatorregistry.v1.MsgOnboardValidator",
+      "creator": "cosmos1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfwkgpd",
+      "index": "validator2",
+      "member_id": "member002",
+      "operator_address": "cosmosvaloper1sn2aa247mcjmz0zq2hf0m23c4ppw4f3mr7kacn",
+      "consensus_pubkey": "",
+      "status": "active",
+      "term_end": 0
+    }
+  ],
+  "metadata": "Proposal to add validator for member002",
+  "title": "Onboard Validator for Member 002",
+  "summary": "Request to add new validator to the network",
+  "proposers": ["cosmos1vmxlganveruhrvayh59nrqwq3y2vs8wclxe25u"]
+}

@@ -11,6 +11,7 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	"github.com/cosmos/cosmos-sdk/x/group"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"google.golang.org/grpc"
 
@@ -30,10 +31,11 @@ var (
 
 // AppModule implements the AppModule interface that defines the inter-dependent methods that modules need to implement
 type AppModule struct {
-	cdc        codec.Codec
-	keeper     keeper.Keeper
-	authKeeper types.AuthKeeper
-	bankKeeper types.BankKeeper
+	cdc         codec.Codec
+	keeper      keeper.Keeper
+	authKeeper  types.AuthKeeper
+	bankKeeper  types.BankKeeper
+	groupKeeper types.GroupKeeper // Add group keeper for auto-execution
 }
 
 func NewAppModule(
@@ -41,12 +43,14 @@ func NewAppModule(
 	keeper keeper.Keeper,
 	authKeeper types.AuthKeeper,
 	bankKeeper types.BankKeeper,
+	groupKeeper types.GroupKeeper,
 ) AppModule {
 	return AppModule{
-		cdc:        cdc,
-		keeper:     keeper,
-		authKeeper: authKeeper,
-		bankKeeper: bankKeeper,
+		cdc:         cdc,
+		keeper:      keeper,
+		authKeeper:  authKeeper,
+		bankKeeper:  bankKeeper,
+		groupKeeper: groupKeeper,
 	}
 }
 
@@ -137,7 +141,148 @@ func (am AppModule) BeginBlock(_ context.Context) error {
 }
 
 // EndBlock contains the logic that is automatically triggered at the end of each block.
-// The end block implementation is optional.
-func (am AppModule) EndBlock(_ context.Context) error {
+// It automatically executes group proposals after their voting period ends.
+func (am AppModule) EndBlock(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Execute pending group proposals
+	if err := am.executePendingGroupProposals(sdkCtx); err != nil {
+		// Log error but don't panic - continue block processing
+		sdkCtx.Logger().Error("failed to execute pending group proposals", "error", err)
+		return nil
+	}
+
+	return nil
+}
+
+// executePendingGroupProposals checks for group proposals that have ended their voting period
+// and automatically executes them if they meet the decision policy requirements.
+func (am AppModule) executePendingGroupProposals(ctx sdk.Context) error {
+	currentTime := ctx.BlockTime()
+	ctx.Logger().Debug("checking for pending group proposal executions", "current_time", currentTime)
+
+	// Get all groups
+	groupsResp, err := am.groupKeeper.Groups(ctx, &group.QueryGroupsRequest{})
+	if err != nil {
+		ctx.Logger().Error("failed to query groups", "error", err)
+		return fmt.Errorf("failed to query groups: %w", err)
+	}
+
+	// Iterate through all groups
+	for _, groupInfo := range groupsResp.Groups {
+		// Get group policies for this group
+		policiesResp, err := am.groupKeeper.GroupPoliciesByGroup(ctx, &group.QueryGroupPoliciesByGroupRequest{
+			GroupId: groupInfo.Id,
+		})
+		if err != nil {
+			ctx.Logger().Error("failed to query group policies", "group_id", groupInfo.Id, "error", err)
+			continue
+		}
+
+		// Iterate through all policies
+		for _, policy := range policiesResp.GroupPolicies {
+			// Get proposals for this policy
+			proposalsResp, err := am.groupKeeper.ProposalsByGroupPolicy(ctx, &group.QueryProposalsByGroupPolicyRequest{
+				Address: policy.Address,
+			})
+			if err != nil {
+				ctx.Logger().Error("failed to query proposals", "policy", policy.Address, "error", err)
+				continue
+			}
+
+			// Check each proposal
+			for _, proposal := range proposalsResp.Proposals {
+				// Skip if voting period hasn't ended
+				if currentTime.Before(proposal.VotingPeriodEnd) {
+					continue
+				}
+
+				// Skip if already executed
+				if proposal.ExecutorResult == group.PROPOSAL_EXECUTOR_RESULT_SUCCESS {
+					continue
+				}
+
+				// Skip if already failed
+				if proposal.ExecutorResult == group.PROPOSAL_EXECUTOR_RESULT_FAILURE {
+					continue
+				}
+
+				// Execute the proposal if it's accepted
+				if proposal.Status == group.PROPOSAL_STATUS_ACCEPTED {
+					ctx.Logger().Info("executing accepted group proposal",
+						"proposal_id", proposal.Id,
+						"group_policy", policy.Address,
+						"voting_period_end", proposal.VotingPeriodEnd,
+						"current_time", currentTime)
+
+					// Use TryExecute to execute the proposal
+					err := am.tryExecuteProposal(ctx, proposal.Id)
+					if err != nil {
+						ctx.Logger().Error("failed to execute proposal",
+							"proposal_id", proposal.Id,
+							"error", err)
+						// Continue with other proposals even if one fails
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// tryExecuteProposal attempts to execute a group proposal
+// Note: Full execution requires message routing which is complex to implement in EndBlocker
+// For now, we log that the proposal is ready for execution
+func (am AppModule) tryExecuteProposal(ctx sdk.Context, proposalID uint64) error {
+	// Get the proposal to check its status
+	proposalResp, err := am.groupKeeper.Proposal(ctx, &group.QueryProposalRequest{
+		ProposalId: proposalID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get proposal %d: %w", proposalID, err)
+	}
+
+	proposal := proposalResp.Proposal
+
+	// Verify proposal is in ACCEPTED status
+	if proposal.Status != group.PROPOSAL_STATUS_ACCEPTED {
+		return fmt.Errorf("proposal %d is not in ACCEPTED status: %s", proposalID, proposal.Status)
+	}
+
+	// Check voting period has ended
+	currentTime := ctx.BlockTime()
+	if currentTime.Before(proposal.VotingPeriodEnd) {
+		return fmt.Errorf("proposal %d voting period hasn't ended yet", proposalID)
+	}
+
+	// Log that the proposal is ready for execution
+	ctx.Logger().Info("group proposal ready for automatic execution",
+		"proposal_id", proposalID,
+		"group_policy", proposal.GroupPolicyAddress,
+		"status", proposal.Status,
+		"voting_period_end", proposal.VotingPeriodEnd,
+		"current_time", currentTime,
+		"messages_count", len(proposal.Messages))
+
+	// Execute the proposal by calling the group keeper's Exec method
+	msgExec := &group.MsgExec{
+		ProposalId: proposalID,
+		Executor:   proposal.GroupPolicyAddress,
+	}
+
+	// Call the group keeper's Exec method to execute the proposal
+	_, err = am.groupKeeper.Exec(ctx, msgExec)
+	if err != nil {
+		ctx.Logger().Error("failed to execute proposal",
+			"proposal_id", proposalID,
+			"error", err)
+		return fmt.Errorf("failed to execute proposal %d: %w", proposalID, err)
+	}
+
+	ctx.Logger().Info("successfully executed group proposal",
+		"proposal_id", proposalID,
+		"group_policy", proposal.GroupPolicyAddress)
+
 	return nil
 }

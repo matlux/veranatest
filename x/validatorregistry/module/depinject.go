@@ -1,6 +1,9 @@
 package validatorregistry
 
 import (
+	"veranatest/x/validatorregistry/keeper"
+	"veranatest/x/validatorregistry/types"
+
 	"cosmossdk.io/core/address"
 	"cosmossdk.io/core/appmodule"
 	"cosmossdk.io/core/store"
@@ -9,8 +12,6 @@ import (
 	"cosmossdk.io/log"
 	"github.com/cosmos/cosmos-sdk/codec"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
-	"veranatest/x/validatorregistry/keeper"
-	"veranatest/x/validatorregistry/types"
 )
 
 var _ depinject.OnePerModuleType = AppModule{}
@@ -35,6 +36,7 @@ type ModuleInputs struct {
 	Logger       log.Logger
 	AuthKeeper   types.AuthKeeper
 	BankKeeper   types.BankKeeper
+	GroupKeeper  types.GroupKeeper
 }
 
 type ModuleOutputs struct {
@@ -57,7 +59,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		authority,
 		in.Logger,
 	)
-	m := NewAppModule(in.Cdc, k, in.AuthKeeper, in.BankKeeper)
+	m := NewAppModule(in.Cdc, k, in.AuthKeeper, in.BankKeeper, in.GroupKeeper)
 
 	return ModuleOutputs{ValidatorregistryKeeper: k, Module: m}
 }

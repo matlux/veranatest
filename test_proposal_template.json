@@ -1,0 +1,18 @@
+{
+  "group_policy_address": "cosmos1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfwkgpd",
+  "messages": [
+    {
+      "@type": "/veranatest.validatorregistry.v1.MsgOnboardValidator",
+      "creator": "cosmos1afk9zr2hn2jsac63h4hm60vl9z3e5u69gndzf7c99cqge3vzwjzsfwkgpd",
+      "member_id": "test-validator",
+      "operator_address": "cosmosvaloper1test123",
+      "consensus_pubkey": "",
+      "status": "active",
+      "term_end": 0
+    }
+  ],
+  "metadata": "Test proposal for council governance",
+  "title": "Test Validator Onboarding",
+  "summary": "Testing council-based validator onboarding with 100s voting period",
+  "proposers": ["cosmos1vmxlganveruhrvayh59nrqwq3y2vs8wclxe25u"]
+}
