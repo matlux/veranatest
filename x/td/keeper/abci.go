@@ -11,7 +11,7 @@ import (
 // BeginBlocker handles the fund flow logic every block
 func (k Keeper) BeginBlocker(ctx sdk.Context) error {
 	// Send calculated yield funds from verana pool to trust deposit module
-	if err := k.SendFundsFromVeranaPool(ctx); err != nil {
+	if err := k.CalculateAndSendAmountFromYieldIntermediatePool(ctx); err != nil {
 		return err
 	}
 
@@ -23,8 +23,8 @@ func (k Keeper) BeginBlocker(ctx sdk.Context) error {
 	return nil
 }
 
-// SendFundsFromVeranaPool calculates yield amount and transfers to trust deposit module
-func (k Keeper) SendFundsFromVeranaPool(ctx sdk.Context) error {
+// CalculateAndSendAmountFromYieldIntermediatePool calculates yield amount and transfers to trust deposit module
+func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context) error {
 	// Get current params
 	params, err := k.Params.Get(ctx)
 	if err != nil {

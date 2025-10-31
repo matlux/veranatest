@@ -8,12 +8,33 @@ This document specifies how to extend the Verana chain to fund, accrue, and dist
 
 The POC (`veranatest`) implements the minimum viable flow:
 
-- Governance (or any account) can send funds into the Verana Pool account via `MsgCreateContinuousFund` or `MsgFundModule`.
+- Governance proposal is created to send continously a % added amount to the community Pool to the `Yield Intermediate Pool` account via `MsgCreateContinuousFund`. *
 - The TD `BeginBlocker` calculates a per-block allowance from static params and, when enough dust accumulates, transfers coins from the Verana Pool module account straight into the TD module account (`x/td/keeper/abci.go`).
 - `MsgFundModule` exists primarily to work around [cosmos/cosmos-sdk#25315](https://github.com/cosmos/cosmos-sdk/issues/25315) by seeding module accounts and—in the TD case—incrementing `trust_deposit_value`.
 - No further bookkeeping happens after the transfer: the TD ledger is not updated, addresses/denom are hard-coded, and excess funds remain in the Verana Pool until the next sweep.
 
 This document layers production expectations on top of that baseline; each enhancement below lists its reasoning to make review easier.
+
+
+* example of a governance proposal:
+```json
+{
+ "messages": [
+  {
+   "@type": "/cosmos.protocolpool.v1.MsgCreateContinuousFund",
+   "authority": "cosmos10d07y265gmmuvt4z0w9aw880jnsr700j6zn9kn",  // this is the governance module account 
+   "recipient": "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz",  // this is the Yield Intermediate Pool account
+   "percentage": "0.005000000000000000",                          // This is the % taken from each the community pool contribution and sent immediately to the Yield Intermediate Pool account
+   "expiry": null
+  }
+ ],
+ "metadata": "ipfs://CID",
+ "deposit": "10000000uvna",
+ "title": "This is the proposal to allow continuous funding of the Yield Intermediate Pool account",
+ "summary": "to send the amount to the Yield Intermediate Pool account address in order to distribute yield to the trust deposit holders",
+ "expedited": false
+}
+```
 
 ## Goals & Non‑Goals
 
