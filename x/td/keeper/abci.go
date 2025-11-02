@@ -10,7 +10,7 @@ import (
 
 // BeginBlocker handles the fund flow logic every block
 func (k Keeper) BeginBlocker(ctx sdk.Context) error {
-	// Send calculated yield funds from verana pool to trust deposit module
+	// Send calculated yield funds from Yield Intermediate Pool to trust deposit module
 	if err := k.CalculateAndSendAmountFromYieldIntermediatePool(ctx); err != nil {
 		return err
 	}
@@ -69,14 +69,14 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 		// Create coins to transfer
 		transferCoins := sdk.NewCoins(sdk.NewCoin("uvna", transferAmount))
 
-		// Check if verana pool has sufficient balance
+		// Check if Yield Intermediate Pool has sufficient balance
 		yieldIntermediatePoolBalance := k.bankKeeper.GetAllBalances(ctx, yieldIntermediatePoolAddr)
 		if !yieldIntermediatePoolBalance.IsAllGTE(transferCoins) {
-			// Not enough funds in verana pool, skip transfer
+			// Not enough funds in Yield Intermediate Pool, skip transfer
 			return nil
 		}
 
-		// Transfer from verana pool to trust deposit module
+		// Transfer from Yield Intermediate Pool to trust deposit module
 		if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.YieldIntermediatePoolAccount, types.ModuleName, transferCoins); err != nil {
 			return err
 		}
@@ -107,13 +107,13 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 	return nil
 }
 
-// SendFundsBackToCommunityPool sends excess funds from verana pool back to community pool
+// SendFundsBackToCommunityPool sends excess funds from Yield Intermediate Pool back to community pool
 func (k Keeper) SendFundsBackToCommunityPool(ctx sdk.Context) error {
-	// Get verana pool module address
+	// Get Yield Intermediate Pool module address
 	yieldIntermediatePool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
 	yieldIntermediatePoolAddr, _ := sdk.AccAddressFromBech32(yieldIntermediatePool)
 
-	// Get current balance in verana pool
+	// Get current balance in Yield Intermediate Pool
 	yieldIntermediatePoolBalance := k.bankKeeper.GetAllBalances(ctx, yieldIntermediatePoolAddr)
 
 	// If there are no funds, nothing to send back

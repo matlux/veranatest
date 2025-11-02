@@ -9,11 +9,10 @@ This document specifies how to extend the Verana chain to fund, accrue, and dist
 The POC (`veranatest`) implements the minimum viable flow:
 
 - Governance proposal is created to send continously a % added amount to the community Pool to the `Yield Intermediate Pool` account via `MsgCreateContinuousFund`. *
-- The TD `BeginBlocker` calculates a per-block allowance from static params and, when enough dust accumulates, transfers coins from the Verana Pool module account straight into the TD module account (`x/td/keeper/abci.go`).
+- The TD `BeginBlocker` calculates a per-block allowance from static params and, when enough dust accumulates, transfers coins from the Yield Intermediate Pool module account straight into the TD module account (`x/td/keeper/abci.go`).
 - `MsgFundModule` exists primarily to work around [cosmos/cosmos-sdk#25315](https://github.com/cosmos/cosmos-sdk/issues/25315) by seeding module accounts and—in the TD case—incrementing `trust_deposit_value`.
-- No further bookkeeping happens after the transfer: the TD ledger is not updated, addresses/denom are hard-coded, and excess funds remain in the Verana Pool until the next sweep.
 
-This document layers production expectations on top of that baseline; each enhancement below lists its reasoning to make review easier.
+
 
 
 * example of a governance proposal:
@@ -39,41 +38,36 @@ This document layers production expectations on top of that baseline; each enhan
 ## Goals & Non‑Goals
 
 - **Goals**
-  - Route a protocol-controlled revenue stream into a dedicated yield buffer (“Verana Pool”).
-  - Transform accumulated rewards into TD principal growth at a parameterized maximum rate.
+  - Route block reward revenue stream into a dedicated yield buffer (“Yield Intermediate Pool Account”).
+  - process the intermediary funds held in the YIPA and send the calculated amount at a parameterized maximum rate to the `Trust Deposit account`. Update the `Trust Deposit Share Value` and all the relevant TD variables as necessary for the Trust Deposit to implemented all its transactions (`Reclaim Trust Deposit`,`Reclaim Trust Deposit Yield` ) as per [MOD-TD-MSG-2] and [MOD-TD-MSG-3] specs.
   - Preserve existing TD share accounting so that yield accrues proportionally to holders’ shares.
   - Provide governance hooks to configure funding and operational parameters.
   - Ensure unused funds flow back to the community pool, avoiding idle balances.
+  - Ensure potential fractional per block block yields are accumulated in Dust to ensure fair accumulation of yield over long period of time.
 - **Non‑Goals**
-  - Redesign of the core TD share model (already present in Verana).
+  - Redesign of the core TD share model (already present in Verana specs, see [MOD-TD-MSG-1-7]).
   - Changes to withdrawal logic or TD product UX.
-  - Automated money market strategies beyond fixed-rate yield distribution.
 
 ## Architectural Components
 
 | Component | Responsibility |
 | --- | --- |
 | `x/protocolpool` (existing) | Hosts community/pool funds; governance can create continuous funding streams. |
-| **Verana Pool Account** | Module account that buffers continuous funding before TD consumption. |
+| **`Yield Intermediate Pool` account** | Module account that buffers continuous funding before TD consumption. |
 | `x/td` module | Applies rate limits, dust accounting, and transfers yield into the main TD ledger. |
 | `x/td` keeper | Maintains module params, dust totals, and orchestrates BeginBlock actions. |
-| **TD Ledger (existing)** | Tracks deposits, withdrawals, and share ownership; receives yield injections. |
 
 The following sections specify the Verana additions in detail.
 
 ## Module Accounts & Denoms
 
 - `td` — TD module account (already exists in Verana). Receives yield prior to crediting the TD ledger.
-- `verana_pool` — **new** module account dedicated to temporary custody of incoming yield. Must be registered in the auth module configuration with no special permissions and **not** blocked for receiving funds.
-- All transfers use the chain base denom (`uvna` unless configured differently). Avoid hard-coded literals where possible; pull the base denom from `sdk.GetConfig().GetBondDenom()` or bank keeper params.
 
 ## Module account (`x/td`)
 
 Existing TD module account:
 
-| Param | Type | Description |
-| --- | --- | --- |
-| `trust_deposit_total_value` | `sdk.Int` / `uint64` | Total TD base value used to bound annual yield; mirrors the TD ledger TVL. |
+`trust_deposit_total_value`
 
 
 ## Parameters (`x/td`)
@@ -95,7 +89,7 @@ Extend the TD module parameters to include:
 | --- | --- | --- |
 | `trust_deposit_max_yield_rate` | `math.LegacyDec` | Maximum annualized yield rate (e.g. 0.15 for 15%). |
 | `blocks_per_year` | `uint32` or `sdk.Int` | Chain-specific estimate used when converting annual rate into per-block allowances. |
-| `verana_pool_address` | `string` | Bech32 string for the Verana Pool module account (default: module addr derived from name). |
+| `verana_pool_address` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
 
 **Justification vs POC:** The POC stores only share value, total value, and rate, with no validation or address configurability. Production requires configurable block cadence (networks may tune it), validated financial caps, and removal of hard-coded addresses to avoid runtime breakage.
 
@@ -122,7 +116,7 @@ type Keeper struct {
 
 1. **`MsgFundModule`** (unchanged signature): allows manual funding of module accounts. Require the caller to match the module authority (defaults to the governance module account) so only authorized operations can seed TD funds. Still wrap with an allowlist so only recognized modules (`td`, `verana_pool`) can be targets, and align behavior with parameter/state updates (e.g. refresh `trust_deposit_total_value` if TD is funded).
 2. **`MsgUpdateParams`**: governance-authorized update covering all parameters. Enforce that partial updates are validated and maintain invariants.
-3. **`MsgCreateContinuousFund`** (protocol pool module, existing): Governance proposal instructing `x/protocolpool` to remit a percentage of community tax each block to the Verana Pool account. Document the expected set-up for operators (see Admin Flow).
+3. **`MsgCreateContinuousFund`** (protocol pool module, existing): Governance proposal instructing `x/protocolpool` to remit a percentage of community tax each block to the Yield Intermediate Pool account. Document the expected set-up for operators (see Admin Flow).
 
 **Justification vs POC:** Messages remain the same, but the allowlist/validation guidance prevents misuse (POC accepts any module target and lacks invariant checks).
 
@@ -151,7 +145,7 @@ Executed each block after distribution and protocol pool modules:
    - `remaining := totalDec.Sub(decFrom(transferInt))`
    - `k.SetDustAmount(ctx, remaining)`
 8. **Sweep Excess** (optional but recommended):
-   - After crediting yield, read Verana Pool balance again.
+   - After crediting yield, read Yield Intermediate Pool balance again.
    - If non-zero, send residual back to community/protocol pool account (module-to-module transfer) to keep the buffer empty.
 
 Every step must log context-rich messages for operations observability.
@@ -170,7 +164,7 @@ Share ownership is a separate concern, already solved in Verana. This specificat
 ## Admin Flow
 
 1. **Governance Funding Setup**
-   - Submit `MsgCreateContinuousFund` targeting the Verana Pool account with the desired percentage (e.g. 0.05% of community tax).
+   - Submit `MsgCreateContinuousFund` targeting the Yield Intermediate Pool account with the desired percentage (e.g. 0.05% of community tax).
    - Include metadata documenting the TD module’s use of funds and the expected burnDown.
 2. **Parameter Initialization**
    - Governance issues `MsgUpdateParams` (or `param-change` proposal) to set:
@@ -183,12 +177,12 @@ Share ownership is a separate concern, already solved in Verana. This specificat
    - Dashboard/CLI queries reference new endpoints:
      - `QueryParams` — verify configuration.
      - `QueryDust` (optional addition) — track accumulated dust above micro precision.
-     - Bank queries on the Verana Pool account should remain near zero outside short-lived per-block spikes.
+     - Bank queries on the Yield Intermediate Pool account should remain near zero outside short-lived per-block spikes.
 
 ## Payment Flow Summary
 
 ```
-Community Tax → Protocol Pool → (governance) Continuous Fund → Verana Pool →
+Community Tax → Protocol Pool → (governance) Continuous Fund → Yield Intermediate Pool →
 BeginBlock (x/td):
   compute allowance
   pull min(allowance, balance)
@@ -217,12 +211,12 @@ By crediting the TD ledger, individual holders accrue yield proportionally witho
   - Exact multiple of micro units (no dust).
   - Dust accumulation leading to transfer.
   - Available balance < allowance.
-  - Empty Verana Pool (no transfer, dust persists).
+  - Empty Yield Intermediate Pool (no transfer, dust persists).
 - **Integration tests**:
-  - Governance proposal wiring from protocol pool to Verana Pool → TD module.
+  - Governance proposal wiring from protocol pool to Yield Intermediate Pool → TD module.
   - Verification that TD share values change without altering share counts.
   - Parameter update governance path (positive + failure cases).
-- **Invariants**: Ensure total coins in TD ledger + Verana Pool equals protocol pool contributions minus sweeps.
+- **Invariants**: Ensure total coins in TD ledger + Yield Intermediate Pool equals protocol pool contributions minus sweeps.
 
 ## Developer Notes
 
