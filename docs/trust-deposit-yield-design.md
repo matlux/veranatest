@@ -89,11 +89,8 @@ Extend the TD module parameters to include:
 | --- | --- | --- |
 | `trust_deposit_max_yield_rate` | `math.LegacyDec` | Maximum annualized yield rate (e.g. 0.15 for 15%). |
 | `blocks_per_year` | `uint32` or `sdk.Int` | Chain-specific estimate used when converting annual rate into per-block allowances. |
-| `verana_pool_address` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
+| `yield_intermediat_pool_address` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
 
-**Justification vs POC:** The POC stores only share value, total value, and rate, with no validation or address configurability. Production requires configurable block cadence (networks may tune it), validated financial caps, and removal of hard-coded addresses to avoid runtime breakage.
-
-Parameter validation must enforce non-negative amounts, rate ≤ 1, and a non-zero block count.
 
 ## Keeper State
 
@@ -107,14 +104,14 @@ type Keeper struct {
 }
 ```
 
-- `DustAmount` stores sub-micro-unit residues as `LegacyDec` to prevent lost yield.
-- Share accounting (who owns which portion of TD) is already implemented elsewhere in Verana and operates independently of this feature. The keeper only needs to ensure the module account balance grows; existing TD logic can derive updated share value on demand.
+- `DustAmount` stores micro-denom fractional remainder to prevent lost yield.
+- Share accounting (who owns which portion of TD) is already implemented elsewhere in the TD and operates independently of this feature. The keeper only needs to ensure the module account balance and the `trust_deposit_share_value grow as per [MOD-TD-MSG-1-7] specs.
 
-**Justification vs POC:** The current keeper only tracks params/dust and stops after moving coins. Production must still surface the increased balance to TD share accounting, but that can remain encapsulated in existing TD code without a new interface.
+
 
 ## Messages & Governance
 
-1. **`MsgFundModule`** (unchanged signature): allows manual funding of module accounts. Require the caller to match the module authority (defaults to the governance module account) so only authorized operations can seed TD funds. Still wrap with an allowlist so only recognized modules (`td`, `verana_pool`) can be targets, and align behavior with parameter/state updates (e.g. refresh `trust_deposit_total_value` if TD is funded).
+1. **`MsgFundModule`** (unchanged signature): allows manual funding of module accounts. Require the caller to match the module authority (defaults to the governance module account) so only authorized operations can seed TD funds. Still wrap with an allowlist so only recognized modules (`td`, `yield_intermediate_pool`) can be targets, and align behavior with parameter/state updates (e.g. refresh `trust_deposit_total_value` if TD is funded).
 2. **`MsgUpdateParams`**: governance-authorized update covering all parameters. Enforce that partial updates are validated and maintain invariants.
 3. **`MsgCreateContinuousFund`** (protocol pool module, existing): Governance proposal instructing `x/protocolpool` to remit a percentage of community tax each block to the Yield Intermediate Pool account. Document the expected set-up for operators (see Admin Flow).
 
@@ -170,7 +167,7 @@ Share ownership is a separate concern, already solved in Verana. This specificat
    - Governance issues `MsgUpdateParams` (or `param-change` proposal) to set:
      - `trust_deposit_max_yield_rate`
      - `blocks_per_year`
-     - (Optionally) `verana_pool_address`
+     - (Optionally) `yield_intermediate_pool_address`
 3. **TD Ledger Alignment**
    - Ensure operational runbooks make it clear how total TD value is measured today (module account balance vs. dedicated keeper state). If the value is cached in params for rate calculations, schedule periodic syncs from the trusted TD source.
 4. **Monitoring**

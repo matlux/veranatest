@@ -164,8 +164,8 @@ fund_module() {
     fi
 }
 
-# Fund verana_pool module
-fund_module "verana_pool"
+# Fund yield_intermediate_pool module
+fund_module "yield_intermediate_pool"
 
 # Fund td module
 fund_module "td"
