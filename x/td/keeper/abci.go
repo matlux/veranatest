@@ -52,19 +52,19 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 	}
 
 	// Add current per-block yield to accumulated dust
-	totalAmount := currentDust.Add(perBlockYield)
+	maxPerBlockYieldAmountAllowable := currentDust.Add(perBlockYield)
 
 	// Convert to integer amount (1 micro unit = 1)
 	// Since we're dealing with uvna (micro units), 1 micro unit = 1
 	microUnitThreshold := math.LegacyNewDec(1)
 
-	if totalAmount.GTE(microUnitThreshold) {
+	if maxPerBlockYieldAmountAllowable.GTE(microUnitThreshold) {
 		// Get module addresses
 		yieldIntermediatePool := "cosmos1jjfey42zhnwrpv8pmpxgp2jwukcy3emfsewffz"
 		yieldIntermediatePoolAddr, _ := sdk.AccAddressFromBech32(yieldIntermediatePool)
 
 		// Convert to integer amount for transfer
-		transferAmount := totalAmount.TruncateInt()
+		transferAmount := maxPerBlockYieldAmountAllowable.TruncateInt()
 
 		// Create coins to transfer
 		transferCoins := sdk.NewCoins(sdk.NewCoin("uvna", transferAmount))
@@ -83,7 +83,7 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 
 		// Calculate remaining dust after transfer
 		transferredAmount := math.LegacyNewDecFromInt(transferAmount)
-		remainingDust := totalAmount.Sub(transferredAmount)
+		remainingDust := maxPerBlockYieldAmountAllowable.Sub(transferredAmount)
 
 		// Update dust amount
 		if err := k.SetDustAmount(ctx, remainingDust); err != nil {
@@ -96,12 +96,12 @@ func (k Keeper) CalculateAndSendAmountFromYieldIntermediatePool(ctx sdk.Context)
 			"remaining_dust", remainingDust.String())
 	} else {
 		// Amount below threshold, just accumulate dust
-		if err := k.SetDustAmount(ctx, totalAmount); err != nil {
+		if err := k.SetDustAmount(ctx, maxPerBlockYieldAmountAllowable); err != nil { // dust + min(maxPerBlockYieldAmountAllowable, amount in YieldIntermediatePoolAccount )
 			return err
 		}
 
 		ctx.Logger().Debug("Accumulated dust amount below threshold",
-			"total_dust", totalAmount.String())
+			"total_dust", maxPerBlockYieldAmountAllowable.String())
 	}
 
 	return nil
