@@ -46,7 +46,7 @@ The POC (`veranatest`) implements the minimum viable flow:
   - Ensure potential fractional per block block yields are accumulated in Dust to ensure fair accumulation of yield over long period of time.
 - **Non‑Goals**
   - Redesign of the core TD share model (already present in Verana specs, see [MOD-TD-MSG-1-7]).
-  - Changes to withdrawal logic or TD product UX.
+  - Changes to withdrawal logic or TD module.
 
 ## Architectural Components
 
@@ -111,11 +111,8 @@ type Keeper struct {
 
 ## Messages & Governance
 
-1. **`MsgFundModule`** (unchanged signature): allows manual funding of module accounts. Require the caller to match the module authority (defaults to the governance module account) so only authorized operations can seed TD funds. Still wrap with an allowlist so only recognized modules (`td`, `yield_intermediate_pool`) can be targets, and align behavior with parameter/state updates (e.g. refresh `trust_deposit_total_value` if TD is funded).
-2. **`MsgUpdateParams`**: governance-authorized update covering all parameters. Enforce that partial updates are validated and maintain invariants.
-3. **`MsgCreateContinuousFund`** (protocol pool module, existing): Governance proposal instructing `x/protocolpool` to remit a percentage of community tax each block to the Yield Intermediate Pool account. Document the expected set-up for operators (see Admin Flow).
-
-**Justification vs POC:** Messages remain the same, but the allowlist/validation guidance prevents misuse (POC accepts any module target and lacks invariant checks).
+1. **`MsgFundModule`** : allows manual funding of module accounts. Require the caller to match the module authority (defaults to the governance module account) so only authorized operations can seed TD funds. 
+3. **`MsgCreateContinuousFund`** (protocol pool module, existing): Governance proposal instructing `x/protocolpool` to remit a percentage of community tax each block to the Yield Intermediate Pool account.
 
 ## Begin Block Flow (`x/td`)
 
@@ -125,8 +122,8 @@ Executed each block after distribution and protocol pool modules:
 2. **Compute Allowance**:
    ```go
    annualYield := params.TrustDepositTotalValue.Mul(params.TrustDepositMaxYieldRate)
-   perBlock := annualYield.Quo(decFrom(params.BlocksPerYear))
-   totalDec := dust.Add(perBlock)
+   perBlockYield := annualYield.Quo(decFrom(params.BlocksPerYear))
+   maxPerBlockYieldAmountAllowable := currentDust.Add(perBlockYield)
    ```
 3. **Check Balance**: `available := bankKeeper.GetBalance(ctx, yieldIntermediatePoolAddr, denom)`.
 4. **Determine Transfer**:
