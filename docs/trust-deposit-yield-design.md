@@ -52,22 +52,17 @@ The POC (`veranatest`) implements the minimum viable flow:
 
 | Component | Responsibility |
 | --- | --- |
-| `x/protocolpool` (existing) | Hosts community/pool funds; governance can create continuous funding streams. |
+| `x/protocolpool` | Provides its own module account to hold community funds and sends the community-tax funds to the `Yield Intermediate Pool` account.  |
 | **`Yield Intermediate Pool` account** | Module account that buffers continuous funding before TD consumption. |
-| `x/td` module | Applies rate limits, dust accounting, and transfers yield into the main TD ledger. |
-| `x/td` keeper | Maintains module params, dust totals, and orchestrates BeginBlock actions. |
+| `x/td` module | Module managing the user trust deposits |
+| `trust_deposit` account | Account holding the trust deposit on behalf of the account. |
 
-The following sections specify the Verana additions in detail.
-
-## Module Accounts & Denoms
-
-- `td` — TD module account (already exists in Verana). Receives yield prior to crediting the TD ledger.
 
 ## Module account (`x/td`)
 
-Existing TD module account:
+TD module account:
 
-`trust_deposit_total_value`
+`trust_deposit`
 
 
 ## Parameters (`x/td`)
@@ -89,23 +84,8 @@ Extend the TD module parameters to include:
 | --- | --- | --- |
 | `trust_deposit_max_yield_rate` | `math.LegacyDec` | Maximum annualized yield rate (e.g. 0.15 for 15%). |
 | `blocks_per_year` | `uint32` or `sdk.Int` | Chain-specific estimate used when converting annual rate into per-block allowances. |
-| `yield_intermediat_pool_address` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
+| `yield_intermediat_pool` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
 
-
-## Keeper State
-
-```go
-type Keeper struct {
-    Params      collections.Item[types.Params]
-    DustAmount  collections.Item[types.DustAmount] // micro-denom fractional remainder
-    // External keepers
-    BankKeeper      types.BankKeeper
-    AccountKeeper   types.AccountKeeper
-}
-```
-
-- `DustAmount` stores micro-denom fractional remainder to prevent lost yield.
-- Share accounting (who owns which portion of TD) is already implemented elsewhere in the TD and operates independently of this feature. The keeper only needs to ensure the module account balance and the `trust_deposit_share_value grow as per [MOD-TD-MSG-1-7] specs.
 
 
 
@@ -120,19 +100,15 @@ Executed each block after distribution and protocol pool modules:
 
 1. **Load Params & Dust**: `params := k.GetParams(ctx)`, `dust := k.GetDustAmount(ctx)`.
 2. **Compute Allowance**:
-   ```go
-   annualYield := params.TrustDepositTotalValue.Mul(params.TrustDepositMaxYieldRate)
-   perBlockYield := annualYield.Quo(decFrom(params.BlocksPerYear))
-   maxPerBlockYieldAmountAllowable := currentDust.Add(perBlockYield)
+   ```javascript
+   allowance := dust + `trust_deposit` * `trust_deposit_max_yield_rate`/ `blocks_per_year`
    ```
-3. **Check Balance**: `available := bankKeeper.GetBalance(ctx, yieldIntermediatePoolAddr, denom)`.
+3. **Check Balance**: `trust_deposit`.available()
 4. **Determine Transfer**:
-   - `transferInt := totalDec.TruncateInt()`
-   - `transferInt = min(transferInt, available.Amount)`
-   - If `transferInt.IsZero()`: store updated dust (`totalDec`) and exit.
+   - `transfer_amount` = min(`allowance`,`yield_intermediat_pool`).TruncateInt()
+   - `dust` = min(`allowance`,`yield_intermediat_pool`).remainder()
 5. **Pull Funds**:
-   - `transferCoins := sdk.NewCoins(sdk.NewCoin(denom, transferInt))`
-   - `bankKeeper.SendCoinsFromModuleToModule(ctx, yieldIntermediatePoolAccount, types.ModuleName, transferCoins)`
+   - transfer `transfer_amount` from `yield_intermediat_pool` to `trust_deposit`
 6. **Credit TD Ledger**:
    - Ensure the TD module’s existing accounting observes the increased module balance (no new interface required; Verana already exposes share ownership and reacts to balance changes). If the parameters cache `trust_deposit_total_value`, refresh it from the authoritative TD data that already exists.
 7. **Update Dust**:
