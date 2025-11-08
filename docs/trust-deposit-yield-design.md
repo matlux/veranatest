@@ -53,16 +53,11 @@ The POC (`veranatest`) implements the minimum viable flow:
 | Component | Responsibility |
 | --- | --- |
 | `x/protocolpool` | Provides its own module account to hold community funds and sends the community-tax funds to the `Yield Intermediate Pool` account.  |
-| **`Yield Intermediate Pool` account** | Module account that buffers continuous funding before TD consumption. |
-| `x/td` module | Module managing the user trust deposits |
+| `Yield Intermediate Pool` account | Module account that buffers continuous funding before TD consumption. |
+| `td` module | Module managing the user trust deposits |
 | `trust_deposit` account | Account holding the trust deposit on behalf of the account. |
 
 
-## Module account (`x/td`)
-
-TD module account:
-
-`trust_deposit`
 
 
 ## Parameters (`x/td`)
@@ -71,19 +66,19 @@ Existing TD module parameters:
 
 | Param | Type | Description |
 | --- | --- | --- |
-| `trust_deposit_share_value` | `math.LegacyDec` | Value of one share of trust deposit, in denom. Default an initial value: 1. Increase over time, when yield is produced. (mandatory) |
-| `trust_deposit_reclaim_burn_rate` | `math.LegacyDec` | Percentage of the deposit burnt when an account executes a reclaim of capital amount. (mandatory) |
-| `trust_deposit_rate` | `math.LegacyDec` | Rate used to dynamically calculate trust deposits from trust fees. Default: 0.20 (20%). (mandatory) |
-| `wallet_user_agent_reward_rate` | `math.LegacyDec` | Rate used to dynamically calculate wallet user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
-| `user_agent_reward_rate` | `math.LegacyDec` | Rate used to dynamically calculate user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
+| `trust_deposit_reclaim_burn_rate` | fix point number | Percentage of the deposit burnt when an account executes a reclaim of capital amount. (mandatory) |
+| `trust_deposit_share_value` | fix point number | Value of one share of trust deposit, in denom. Default an initial value: 1. Increase over time, when yield is produced. (mandatory) |
+| `trust_deposit_rate` | fix point number | Rate used to dynamically calculate trust deposits from trust fees. Default: 0.20 (20%). (mandatory) |
+| `wallet_user_agent_reward_rate` | fix point number | Rate used to dynamically calculate wallet user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
+| `user_agent_reward_rate` | fix point number | Rate used to dynamically calculate user-agent rewards from trust fees. Default: 0.20 (20%). (mandatory) |
 
 
 Extend the TD module parameters to include:
 
 | Param | Type | Description |
 | --- | --- | --- |
-| `trust_deposit_max_yield_rate` | `math.LegacyDec` | Maximum annualized yield rate (e.g. 0.15 for 15%). |
-| `blocks_per_year` | `uint32` or `sdk.Int` | Chain-specific estimate used when converting annual rate into per-block allowances. |
+| `trust_deposit_max_yield_rate` | fix point number  | Maximum annualized yield rate (e.g. 0.15 for 15%). |
+| `blocks_per_year` | number | Chain-specific estimate used when converting annual rate into per-block allowances. |
 | `yield_intermediat_pool` | `string` | Bech32 string for the Yield Intermediate Pool module account (default: module addr derived from name). |
 
 
@@ -98,38 +93,32 @@ Extend the TD module parameters to include:
 
 Executed each block after distribution and protocol pool modules:
 
-1. **Load Params & Dust**: `params := k.GetParams(ctx)`, `dust := k.GetDustAmount(ctx)`.
-2. **Compute Allowance**:
+1. **Begin Block Flow (`x/protocolpool`)**:
+   - Begin Block Flow (`x/protocolpool`) is executed ahead of Begin Block Flow (`x/td`)
+   - `yield_intermediat_pool` therefore contains the portion of the block reward distributed by the `x/protocolpool` module. The Begin Block Flow allows for the flow of tokens between modules to transact atomically as part of the same block. 
+2. **Compute Yield Allowance**:
    ```javascript
-   allowance := dust + `trust_deposit` * `trust_deposit_max_yield_rate`/ `blocks_per_year`
+   `allowance` := dust + `trust_deposit` * `trust_deposit_max_yield_rate`/ `blocks_per_year`
    ```
-3. **Check Balance**: `trust_deposit`.available()
-4. **Determine Transfer**:
+2. **Determine Transfer**:
    - `transfer_amount` = min(`allowance`,`yield_intermediat_pool`).TruncateInt()
-   - `dust` = min(`allowance`,`yield_intermediat_pool`).remainder()
-5. **Pull Funds**:
+5. **Transfer Yield to Trust Deposit**:
    - transfer `transfer_amount` from `yield_intermediat_pool` to `trust_deposit`
-6. **Credit TD Ledger**:
-   - Ensure the TD module’s existing accounting observes the increased module balance (no new interface required; Verana already exposes share ownership and reacts to balance changes). If the parameters cache `trust_deposit_total_value`, refresh it from the authoritative TD data that already exists.
+6. **Adjust Trust Deposit Share Value**:
+   - update the `trust_deposit_share_value`  
+   - e.g. `trust_deposit_share_value` = `trust_deposit` / `total_number_of_shares_issued`  
 7. **Update Dust**:
-   - `remaining := totalDec.Sub(decFrom(transferInt))`
-   - `k.SetDustAmount(ctx, remaining)`
-8. **Sweep Excess** (optional but recommended):
-   - After crediting yield, read Yield Intermediate Pool balance again.
-   - If non-zero, send residual back to community/protocol pool account (module-to-module transfer) to keep the buffer empty.
+   - `dust` = min(`allowance`,`yield_intermediat_pool`).remainder()
+8. **Return Rest of YIP Account to Community Pool**:
+   - send residual `yield_intermediat_pool` account's amount back to community/protocol pool (`x/protocolpool`) account to keep the buffer empty.
 
-Every step must log context-rich messages for operations observability.
 
-**Justification vs POC:** Steps 3–8 mirror the POC flow but make existing gaps explicit: partial payouts (step 4) and sweep (step 8) ensure funds do not stall. Step 6 simply clarifies that existing TD accounting must recognize the balance increase; no additional share logic is specified here.
+## Trust Deposit Integration
 
-## Trust Deposit Ledger Integration
+The existing TD module already maintains a mapping of accounts to shares:
 
-The existing TD ledger already maintains a mapping of accounts to shares:
-
-- **Expectations**: yield injections should increase the pool value without changing individual share counts.
-- **Interface expectations**: No new methods are required for this feature. Continue to use whatever Verana already exposes to read total TD value (if needed for params) and to maintain share price invariants. If the TD module infers value strictly from its module account balance, no extra plumbing is necessary.
-
-Share ownership is a separate concern, already solved in Verana. This specification assumes that layer continues to function once additional funds reach the TD module account.
+- **Expectations**: yield injections should increase the pool value without changing individual share counts. That's why the `GlobalVariables.trust_deposit_share_value` is updated to 
+- **Interface expectations**: No new methods are required for this feature.
 
 ## Admin Flow
 
@@ -141,8 +130,6 @@ Share ownership is a separate concern, already solved in Verana. This specificat
      - `trust_deposit_max_yield_rate`
      - `blocks_per_year`
      - (Optionally) `yield_intermediate_pool_address`
-3. **TD Ledger Alignment**
-   - Ensure operational runbooks make it clear how total TD value is measured today (module account balance vs. dedicated keeper state). If the value is cached in params for rate calculations, schedule periodic syncs from the trusted TD source.
 4. **Monitoring**
    - Dashboard/CLI queries reference new endpoints:
      - `QueryParams` — verify configuration.
