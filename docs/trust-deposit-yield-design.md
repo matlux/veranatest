@@ -143,44 +143,15 @@ Community Tax → Protocol Pool → (governance) Continuous Fund → Yield Inter
 BeginBlock (x/td):
   compute allowance
   pull min(allowance, balance)
-  forward to x/td ledger (ApplyYield)
-  adjust dust + sweep excess back
+  transfer `transfer_amount` from `yield_intermediat_pool` to `trust_deposit`
+  adjust dust + sweep excess back to `x/protocolpool` account 
+  Adjust Trust Deposit Share Value
 Result: TD share value increases; per-holder positions grow automatically.
 ```
 
-By crediting the TD ledger, individual holders accrue yield proportionally without new messages or manual claims.
+By crediting the TD `trust_deposit` account and by adjusting `trust_deposit_share_value`, individual holders accrue yield proportionally without new messages or manual claims.
 
-## Handling Prior Gaps
 
-| Gap Observed in POC | Production Resolution |
-| --- | --- |
-| Hard-coded addresses/denom | Parameterize addresses, derive denom via bank/mint params. |
-| No partial payout when funding < allowance | Use `min(allowance, yieldIntermediatePoolBalance)` to transfer whatever is available. |
-| Funds stranded in intermediate pool | Post-transfer sweep back to community pool. |
-| Parameter validation empty | Implement strict validators (non-negative, rate bounds, etc.). |
-| Unlimited `MsgFundModule` targets | Enforce allowlist and update `trust_deposit_total_value` only when TD is funded via ledger API. |
-| Missing ledger integration | Document how existing TD accounting observes balances; no new interfaces are required, just ensure value tracking matches expectations. |
-| FundModule workaround | Keep the existing workaround comment and logic until the upstream SDK bug is resolved; document its purpose for reviewers. |
-
-## Testing Guidelines
-
-- **Unit tests** for BeginBlock cases:
-  - Exact multiple of micro units (no dust).
-  - Dust accumulation leading to transfer.
-  - Available balance < allowance.
-  - Empty Yield Intermediate Pool (no transfer, dust persists).
-- **Integration tests**:
-  - Governance proposal wiring from protocol pool to Yield Intermediate Pool → TD module.
-  - Verification that TD share values change without altering share counts.
-  - Parameter update governance path (positive + failure cases).
-- **Invariants**: Ensure total coins in TD ledger + Yield Intermediate Pool equals protocol pool contributions minus sweeps.
-
-## Developer Notes
-
-- Maintain deterministic ordering in BeginBlock so TD runs after distribution and protocol pool.
-- Ensure migrations update params with new fields and initialize dust record if absent.
-- Provide CLI/REST handlers mirroring existing module patterns (`query params`, `tx fund-module`, etc.).
-- Document operator playbooks alongside this spec in chain operations docs.
 
 ```plantuml
 @startuml
